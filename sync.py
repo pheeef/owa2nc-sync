@@ -24,7 +24,7 @@ def init_caldav() -> caldav.DAVClient:
 
 
 def clear_caldav_calendar():
-    logger.info(f'Deleting all events from {os.environ.get('nc_calendar_name')}')
+    logger.info(f'Deleting all events from {os.environ.get("nc_calendar_name")}')
     events = calendar.events()
     for event in events:
         logger.debug(f'Deleting {event}')
@@ -76,7 +76,7 @@ def get_calendar() -> caldav.Calendar | None:
     calendars = principal.calendars()
 
     for cal in calendars:
-        if cal.id == os.environ.get('nc_calendar_name'):
+        if cal.name == os.environ.get('nc_calendar_name'):
             return cal
     return None
 
