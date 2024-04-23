@@ -76,7 +76,7 @@ def get_calendar() -> caldav.Calendar | None:
     calendars = principal.calendars()
 
     for cal in calendars:
-        if cal.name == os.environ.get('nc_calendar_name'):
+        if os.environ.get('nc_calendar_name') in (cal.id, cal.name):
             return cal
     return None
 
