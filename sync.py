@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 from datetime import datetime, timedelta
 
 import caldav
@@ -81,6 +82,10 @@ def get_calendar() -> caldav.Calendar | None:
     return None
 
 
+subject_ignore_regexp = os.environ.get('subject_ignore_re')
+if subject_ignore_regexp:
+    subject_ignore_regexp = re.compile(subject_ignore_regexp)
+
 calendar = get_calendar()
 # If the Calendar with the specified Label in .env doesn't exist we create it - not pretty but it works
 if calendar is None:
@@ -91,6 +96,10 @@ if calendar is None:
 clear_caldav_calendar()
 
 for item in ret:
+    if subject_ignore_regexp and item.subject:
+        if subject_ignore_regexp.match(item.subject):
+            logger.info('Ignoring one entry that matches subject_ignore_re')
+            continue
     create_caldav_entry(item.start, item.end)
 
 logger.info('Sucessfully Syned Exchange Calendar to Nextcloud')
