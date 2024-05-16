@@ -17,6 +17,7 @@ import hmac
 
 dotenv.load_dotenv()
 FALLBACK_KEY_SEED = 'croup.rang.lathed.spoor.opened.brewed'
+FALLBACK_WORK_PREFIX = 'work'
 
 # Replace "Some_Region/Some_Location" with a reasonable value from CLDR_TO_MS_TIMEZONE_MAP.keys()
 MS_TIMEZONE_TO_IANA_MAP[""] = os.getenv("default_timezone", "Europe/Vienna")
@@ -50,9 +51,9 @@ def clear_caldav_calendar(keep_uids: set):
     return kept
 
 
-def create_event_id(item):
+def create_event_id(item, public_subject, extra):
     """Create a unique but persistent event_id based on item information that we care about"""
-    data_items = [calendar.url, item.start, item.end, item.subject]
+    data_items = [calendar.url, item.start, item.end, item.subject, public_subject] + extra
     data = '::'.join(str(i) for i in data_items).encode('UTF-8')
     key = os.environ.get('id_hash_seed', FALLBACK_KEY_SEED).encode('UTF-8')
     event_id = hmac.new(key, data, hashlib.sha256).hexdigest()
@@ -60,9 +61,18 @@ def create_event_id(item):
 
 def create_caldav_event(item):
     logger.debug(f'Creating Calendar Entry for {item.subject}: {item.start}, {item.end}')
-    event = Event({'uid': create_event_id(item)})
 
-    event.add('summary', 'work block')
+    subject_passthrough_regexp = os.environ.get('subject_passthrough_re')
+    work_prefix = os.environ.get('work_prefix', FALLBACK_WORK_PREFIX)
+    if subject_passthrough_regexp:
+        subject_passthrough_regexp = re.compile(subject_passthrough_regexp)
+    if subject_passthrough_regexp and subject_passthrough_regexp.match(item.subject):
+        public_subject = f'{work_prefix}: {item.subject}'
+    else:
+        public_subject = f'{work_prefix} appointment'
+
+    event = Event({'uid': create_event_id(item, public_subject, [subject_passthrough_regexp])})
+    event.add('summary', public_subject)
     event.add('description', 'this entry was created by the owa2nc_block sync service :]')
     event.add('dtstart', item.start)
     event.add('dtend', item.end)
