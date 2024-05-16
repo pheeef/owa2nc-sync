@@ -12,8 +12,11 @@ from exchangelib import Account, Credentials, DELEGATE, Configuration, EWSDateTi
 from exchangelib.winzone import MS_TIMEZONE_TO_IANA_MAP
 from icalendar import Event
 from loguru import logger
+import hashlib
+import hmac
 
 dotenv.load_dotenv()
+FALLBACK_KEY_SEED = 'croup.rang.lathed.spoor.opened.brewed'
 
 # Replace "Some_Region/Some_Location" with a reasonable value from CLDR_TO_MS_TIMEZONE_MAP.keys()
 MS_TIMEZONE_TO_IANA_MAP[""] = os.getenv("default_timezone", "Europe/Vienna")
@@ -28,22 +31,42 @@ def init_caldav() -> caldav.DAVClient:
     )
 
 
-def clear_caldav_calendar():
-    logger.info(f'Deleting all events from {os.environ.get("nc_calendar_name")}')
+def clear_caldav_calendar(keep_uids: set):
+    """deletes all events whose IDs are not in keep_uids.
+
+    Returns a set of IDs kept.
+    """
+    logger.info(f'Deleting events from {os.environ.get("nc_calendar_name")}')
     events = calendar.events()
+    kept = set()
     for event in events:
-        logger.debug(f'Deleting {event}')
-        event.delete()
+        uid = event.vobject_instance.vevent.uid.value
+        if uid in keep_uids:
+            logger.debug(f'Keeping {event} with uid {uid}')
+            kept.add(uid)
+        else:
+            logger.debug(f'Deleting {event} with uid {uid}')
+            event.delete()
+    return kept
 
 
-def create_caldav_entry(start: EWSDateTime, end: EWSDateTime):
-    logger.debug(f'Syncing Calendar Entry {start}, {end}')
-    event = Event()
+def create_event_id(item):
+    """Create a unique but persistent event_id based on item information that we care about"""
+    data_items = [calendar.url, item.start, item.end, item.subject]
+    data = '::'.join(str(i) for i in data_items).encode('UTF-8')
+    key = os.environ.get('id_hash_seed', FALLBACK_KEY_SEED).encode('UTF-8')
+    event_id = hmac.new(key, data, hashlib.sha256).hexdigest()
+    return event_id
+
+def create_caldav_event(item):
+    logger.debug(f'Creating Calendar Entry for {item.subject}: {item.start}, {item.end}')
+    event = Event({'uid': create_event_id(item)})
+
     event.add('summary', 'work block')
     event.add('description', 'this entry was created by the owa2nc_block sync service :]')
-    event.add('dtstart', start)
-    event.add('dtend', end)
-    return calendar.add_event(event.to_ical())
+    event.add('dtstart', item.start)
+    event.add('dtend', item.end)
+    return event
 
 
 # Load .env variables
@@ -96,15 +119,22 @@ if calendar is None:
     create_calendar()
     calendar = get_calendar()
 
-# clear all calendar entries to not conflict
-clear_caldav_calendar()
-
+events = {}
 for item in ret:
     if subject_ignore_regexp and item.subject:
         if subject_ignore_regexp.match(item.subject):
             logger.info('Ignoring one entry that matches subject_ignore_re')
             continue
-    create_caldav_entry(item.start, item.end)
+    event = create_caldav_event(item)
+    events[event['uid']] = event
+
+kept = clear_caldav_calendar(set(events.keys()))
+for k, v in events.items():
+    if k in kept:
+        logger.debug(f'Already have item with uid {k}')
+        continue
+    logger.debug(f'Adding item with uid {k}')
+    calendar.add_event(v.to_ical())
 
 logger.info('Sucessfully Syned Exchange Calendar to Nextcloud')
 exit(0)
