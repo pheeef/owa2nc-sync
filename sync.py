@@ -9,10 +9,14 @@ import caldav
 # .env loading
 import dotenv
 from exchangelib import Account, Credentials, DELEGATE, Configuration, EWSDateTime
+from exchangelib.winzone import MS_TIMEZONE_TO_IANA_MAP
 from icalendar import Event
 from loguru import logger
 
 dotenv.load_dotenv()
+
+# Replace "Some_Region/Some_Location" with a reasonable value from CLDR_TO_MS_TIMEZONE_MAP.keys()
+MS_TIMEZONE_TO_IANA_MAP[""] = os.getenv("default_timezone", "Europe/Vienna")
 
 
 def init_caldav() -> caldav.DAVClient:
